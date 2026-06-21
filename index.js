@@ -311,11 +311,6 @@ onValue(ref(db, 'whatsapp_control/command'), async (snapshot) => {
     const cmd = snapshot.val();
     if (cmd && cmd.action === 'request_code') {
         try {
-            if (waSock && waSock.authState.creds.registered) {
-                await set(ref(db, 'whatsapp_control/code'), { code: 'EL BOT YA ESTÁ VINCULADO', timestamp: Date.now() });
-                return;
-            }
-            
             console.log(`[SISTEMA] Solicitando código WA para la web: ${cmd.number}`);
             const code = await waSock.requestPairingCode(cmd.number);
             
@@ -408,11 +403,6 @@ bot.on('message', async (msg) => {
             bot.sendMessage(chatId, `Solicitando Código a WhatsApp para el número +${fullNumber}... Por favor espere.`);
 
             try {
-                if (waSock && waSock.authState.creds.registered) {
-                    userStates[chatId] = null;
-                    return bot.sendMessage(chatId, 'El bot de WhatsApp ya se encuentra registrado. Cierre sesión primero desde la app de WhatsApp si desea cambiar de número.');
-                }
-                
                 setTimeout(async () => {
                     try {
                         const code = await waSock.requestPairingCode(fullNumber);
