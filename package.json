@@ -1,1 +1,20 @@
-npm install node-telegram-bot-api firebase @whiskeysockets/baileys pino
+{
+  "name": "wa-session-manager-sebasxit",
+  "version": "1.0.0",
+  "description": "Sistema aislado de vinculación de WhatsApp y respaldo de sesión en Firebase para ejecución en Railway",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "SebasXit",
+  "license": "ISC",
+  "dependencies": {
+    "@whiskeysockets/baileys": "latest",
+    "firebase": "latest",
+    "node-telegram-bot-api": "latest",
+    "pino": "latest"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
