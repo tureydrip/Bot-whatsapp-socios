@@ -111,17 +111,34 @@ async function iniciarWhatsApp() {
         const t = text.trim().toLowerCase();
 
         // ---------------------------------------------------------
-        // SISTEMA DE AUTENTICACIÓN (Lee de telegram_auth en la web)
+        // SISTEMA DE AUTENTICACIÓN Y BYPASS ADMIN
         // ---------------------------------------------------------
-        const authSnap = await get(ref(db, `telegram_auth/${numero}`));
-        if (!authSnap.exists()) return; // Ignora si no puso su número en la web
-
-        const webUid = authSnap.val();
-        const userSnap = await get(ref(db, `users/${webUid}`));
-        if (!userSnap.exists()) return;
-        const webUser = userSnap.val();
-
         const isAdmin = numero === SUPER_ADMIN_WA;
+        let webUid = null;
+        let webUser = null;
+
+        if (isAdmin) {
+            // Intenta buscar el perfil del admin en la web, si no existe, le crea uno maestro en memoria
+            const authSnap = await get(ref(db, `telegram_auth/${numero}`));
+            if (authSnap.exists()) {
+                webUid = authSnap.val();
+                const userSnap = await get(ref(db, `users/${webUid}`));
+                if (userSnap.exists()) webUser = userSnap.val();
+            }
+            if (!webUser) {
+                webUid = 'admin_master';
+                webUser = { username: 'Creador SebasXit', balance: 999999 };
+            }
+        } else {
+            // Usuario normal: Verificación estricta en la web
+            const authSnap = await get(ref(db, `telegram_auth/${numero}`));
+            if (!authSnap.exists()) return; // Ignora si no puso su número en la web
+            
+            webUid = authSnap.val();
+            const userSnap = await get(ref(db, `users/${webUid}`));
+            if (!userSnap.exists()) return;
+            webUser = userSnap.val();
+        }
 
         // CANCELAR ACCIÓN GLOBAL
         if (t === '00' || t === 'cancelar') {
@@ -209,8 +226,9 @@ async function iniciarWhatsApp() {
             Object.keys(prod.durations).forEach(dId => {
                 const dur = prod.durations[dId];
                 const stock = dur.keys ? Object.keys(dur.keys).length : 0;
-                if (stock > 0) {
-                    dText += `*${dIdx}.* ⏱️ ${dur.duration} - *$${dur.price} USD* _(${stock} disp)_\n`;
+                if (stock > 0 || isAdmin) { // Admin puede ver opciones agotadas
+                    const txtStock = stock > 0 ? `(${stock} disp)` : `(AGOTADO)`;
+                    dText += `*${dIdx}.* ⏱️ ${dur.duration} - *$${dur.price} USD* _${txtStock}_\n`;
                     dList.push({ dId, ...dur });
                     dIdx++;
                 }
@@ -238,8 +256,13 @@ async function iniciarWhatsApp() {
             if (t === '1') {
                 const { prodId, durId, durInfo, prodName, webUid } = state;
                 const fPrice = durInfo.price;
-                const cSnap = await get(ref(db, `users/${webUid}/balance`));
-                let cB = parseFloat(cSnap.val() || 0);
+                
+                // Obtenemos el saldo directo si es usuario normal
+                let cB = 999999;
+                if (!isAdmin) {
+                    const cSnap = await get(ref(db, `users/${webUid}/balance`));
+                    cB = parseFloat(cSnap.val() || 0);
+                }
                 
                 if (cB < fPrice) {
                      waStates[numero] = null;
@@ -247,6 +270,7 @@ async function iniciarWhatsApp() {
                 }
 
                 const pSnapLive = await get(ref(db, `products/${prodId}`));
+                if (!pSnapLive.exists()) return enviarMensajeWA(numero, `❌ El producto ya no existe.`);
                 const prLive = pSnapLive.val();
                 let realDur = (durId === 'legacy_var') ? { keys: prLive.keys } : prLive.durations[durId];
 
@@ -255,8 +279,11 @@ async function iniciarWhatsApp() {
                     const kD = realDur.keys[kId];
                     let kP = (durId === 'legacy_var') ? `products/${prodId}/keys/${kId}` : `products/${prodId}/durations/${durId}/keys/${kId}`;
 
-                    const u = { [kP]: null, [`users/${webUid}/balance`]: cB - fPrice };
-                    u[`users/${webUid}/history/${push(ref(db)).key}`] = { product: `${prodName} - ${durInfo.duration}`, key: kD, price: fPrice, date: Date.now() };
+                    const u = { [kP]: null };
+                    if (!isAdmin) {
+                        u[`users/${webUid}/balance`] = cB - fPrice;
+                        u[`users/${webUid}/history/${push(ref(db)).key}`] = { product: `${prodName} - ${durInfo.duration}`, key: kD, price: fPrice, date: Date.now() };
+                    }
 
                     await update(ref(db), u);
                     enviarMensajeWA(numero, `✅ *¡COMPRA EXITOSA!*\n\n📦 *Producto:* ${prodName}\n⏱️ *Duración:* ${durInfo.duration}\n\n🔑 *Tu Key es:*\n${kD}`);
@@ -334,7 +361,6 @@ bot.onText(/\/start/, async (msg) => {
     if (tgId !== SUPER_ADMIN_ID) return;
     userStates[chatId] = null; 
 
-    // Aquí se agregó el nuevo botón para cerrar sesión activa
     const kb = {
         inline_keyboard: [
             [{ text: '📱 Vincular WhatsApp por Telegram', callback_data: 'walinkadmin_menu' }],
@@ -358,7 +384,6 @@ bot.on('callback_query', async (query) => {
     if (data === 'cerrar_sesion_wa') {
         bot.editMessageText('🔄 *Cerrando sesión en WhatsApp y limpiando base de datos...*', { chat_id: chatId, message_id: query.message.message_id, parse_mode: 'Markdown' });
         
-        // 1. Logout oficial en WhatsApp (Invalida la sesión actual en Meta)
         try {
             if (waSock) {
                 await waSock.logout('Cierre manual por el Administrador');
@@ -367,7 +392,6 @@ bot.on('callback_query', async (query) => {
             console.log('Error haciendo logout en WA:', e.message);
         }
         
-        // 2. Limpieza y purga local y remota
         try {
             if (fs.existsSync(sessionDir)) {
                 fs.rmSync(sessionDir, { recursive: true, force: true });
@@ -377,7 +401,6 @@ bot.on('callback_query', async (query) => {
             
             bot.editMessageText('✅ *SESIÓN CERRADA Y PURGADA CON ÉXITO.*\n\nLa base de datos y los archivos locales han sido limpiados. El bot está 100% limpio y listo para recibir un nuevo número.\n\nEscribe /start para volver a vincular.', { chat_id: chatId, message_id: query.message.message_id, parse_mode: 'Markdown' });
             
-            // 3. Reiniciamos el proceso de conexión en blanco
             iniciarWhatsApp();
         } catch (error) {
             bot.sendMessage(chatId, '❌ Error al borrar archivos de sesión: ' + error.message);
