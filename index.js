@@ -66,7 +66,7 @@ async function iniciarWhatsApp() {
 
     waSock = makeWASocket({
         version,
-        logger: pino({ level: 'silent' }), // Evita saturar los logs de Railway
+        logger: pino({ level: 'silent' }), // Evita saturar los logs
         printQRInTerminal: false,
         auth: state,
         browser: ['Ubuntu', 'Chrome', '20.0.04']
@@ -106,9 +106,17 @@ async function iniciarWhatsApp() {
         if (!msg.message || msg.key.fromMe) return;
 
         const sender = msg.key.remoteJid;
-        const numero = sender.split('@')[0];
+        
+        // Ignorar mensajes que vengan de grupos
+        if (sender.includes('@g.us')) return;
+
+        // LA SOLUCIÓN: Limpiamos el número de cualquier ID de dispositivo que WhatsApp agregue internamente (ej: :2)
+        const numero = sender.split('@')[0].split(':')[0];
+        
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
         const t = text.trim().toLowerCase();
+
+        console.log(`[WHATSAPP] Mensaje recibido -> De: ${numero} | Texto: ${text}`);
 
         // ---------------------------------------------------------
         // SISTEMA DE AUTENTICACIÓN Y BYPASS ADMIN
@@ -132,7 +140,10 @@ async function iniciarWhatsApp() {
         } else {
             // Usuario normal: Verificación estricta en la web
             const authSnap = await get(ref(db, `telegram_auth/${numero}`));
-            if (!authSnap.exists()) return; // Ignora si no puso su número en la web
+            if (!authSnap.exists()) {
+                console.log(`[BLOQUEO] Usuario ${numero} ignorado (No está registrado en la web)`);
+                return; 
+            }
             
             webUid = authSnap.val();
             const userSnap = await get(ref(db, `users/${webUid}`));
@@ -226,7 +237,7 @@ async function iniciarWhatsApp() {
             Object.keys(prod.durations).forEach(dId => {
                 const dur = prod.durations[dId];
                 const stock = dur.keys ? Object.keys(dur.keys).length : 0;
-                if (stock > 0 || isAdmin) { // Admin puede ver opciones agotadas
+                if (stock > 0 || isAdmin) { 
                     const txtStock = stock > 0 ? `(${stock} disp)` : `(AGOTADO)`;
                     dText += `*${dIdx}.* ⏱️ ${dur.duration} - *$${dur.price} USD* _${txtStock}_\n`;
                     dList.push({ dId, ...dur });
@@ -257,7 +268,6 @@ async function iniciarWhatsApp() {
                 const { prodId, durId, durInfo, prodName, webUid } = state;
                 const fPrice = durInfo.price;
                 
-                // Obtenemos el saldo directo si es usuario normal
                 let cB = 999999;
                 if (!isAdmin) {
                     const cSnap = await get(ref(db, `users/${webUid}/balance`));
@@ -310,7 +320,7 @@ async function processWaQueue() {
 
     while (waQueue.length > 0) {
         const { numero, mensaje, delayAfter } = waQueue.shift();
-        if (waSock && waSock.authState.creds.registered) {
+        if (waSock) { // Evitamos trabas de sesión si el socket existe
             try {
                 const jid = `${numero}@s.whatsapp.net`;
                 await waSock.sendPresenceUpdate('composing', jid);
@@ -483,3 +493,4 @@ process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
 console.log('Bot inicializado y esperando instrucciones...');
+
