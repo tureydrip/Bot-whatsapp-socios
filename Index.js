@@ -9,7 +9,7 @@ const path = require('path');
 // ==========================================
 // CONFIGURACIÓN PRINCIPAL
 // ==========================================
-const token = '8275295427:AAHiO33nzZPgmglmSWo8eKVMKkEsCy19fSA';
+const token = '8891784070:AAGmrY8It4BNt6FfMEuY8fJg-HBJRIn0ZL8';
 const bot = new TelegramBot(token, { polling: true });
 const SUPER_ADMIN_ID = 7710633235; 
 
