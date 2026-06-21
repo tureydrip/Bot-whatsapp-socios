@@ -14,12 +14,13 @@ const bot = new TelegramBot(token, { polling: true });
 const SUPER_ADMIN_ID = 7710633235; 
 
 const firebaseConfig = {
-    apiKey: "AIzaSyDrNambFw1VNXSkTR1yGq6_B9jWWA1LsxM",
-    authDomain: "clientesvip-be9bd.firebaseapp.com",
-    projectId: "clientesvip-be9bd",
-    storageBucket: "clientesvip-be9bd.firebasestorage.app",
-    messagingSenderId: "131036295027",
-    appId: "1:131036295027:web:3cc360dca16d4873f55f06"
+    apiKey: "AIzaSyDoIGXJQ2NEgeUXCDHLSFc7YDA6EtDYUSg",
+    authDomain: "socios666-7056e.firebaseapp.com",
+    projectId: "socios666-7056e",
+    storageBucket: "socios666-7056e.firebasestorage.app",
+    messagingSenderId: "328433251001",
+    appId: "1:328433251001:web:141a5bf56127e323afe168",
+    databaseURL: "https://socios666-7056e-default-rtdb.firebaseio.com"
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
