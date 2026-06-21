@@ -1,6 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const { initializeApp } = require('firebase/app');
-const { getDatabase, ref, get, set, update, push, onValue } = require('firebase/database');
+const { getDatabase, ref, get, set, update, push, onValue, remove } = require('firebase/database');
 const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
@@ -334,9 +334,11 @@ bot.onText(/\/start/, async (msg) => {
     if (tgId !== SUPER_ADMIN_ID) return;
     userStates[chatId] = null; 
 
+    // Aquí se agregó el nuevo botón para cerrar sesión activa
     const kb = {
         inline_keyboard: [
-            [{ text: '[ Vincular WhatsApp por Telegram ]', callback_data: 'walinkadmin_menu' }]
+            [{ text: '📱 Vincular WhatsApp por Telegram', callback_data: 'walinkadmin_menu' }],
+            [{ text: '🔴 Cerrar Sesión Activa de WA', callback_data: 'cerrar_sesion_wa' }]
         ]
     };
 
@@ -351,6 +353,37 @@ bot.on('callback_query', async (query) => {
     bot.answerCallbackQuery(query.id);
 
     if (tgId !== SUPER_ADMIN_ID) return;
+
+    // --- LÓGICA DE CIERRE DE SESIÓN PROFUNDO ---
+    if (data === 'cerrar_sesion_wa') {
+        bot.editMessageText('🔄 *Cerrando sesión en WhatsApp y limpiando base de datos...*', { chat_id: chatId, message_id: query.message.message_id, parse_mode: 'Markdown' });
+        
+        // 1. Logout oficial en WhatsApp (Invalida la sesión actual en Meta)
+        try {
+            if (waSock) {
+                await waSock.logout('Cierre manual por el Administrador');
+            }
+        } catch (e) {
+            console.log('Error haciendo logout en WA:', e.message);
+        }
+        
+        // 2. Limpieza y purga local y remota
+        try {
+            if (fs.existsSync(sessionDir)) {
+                fs.rmSync(sessionDir, { recursive: true, force: true });
+            }
+            await remove(ref(db, 'whatsapp_control/backup_session'));
+            waSock = null;
+            
+            bot.editMessageText('✅ *SESIÓN CERRADA Y PURGADA CON ÉXITO.*\n\nLa base de datos y los archivos locales han sido limpiados. El bot está 100% limpio y listo para recibir un nuevo número.\n\nEscribe /start para volver a vincular.', { chat_id: chatId, message_id: query.message.message_id, parse_mode: 'Markdown' });
+            
+            // 3. Reiniciamos el proceso de conexión en blanco
+            iniciarWhatsApp();
+        } catch (error) {
+            bot.sendMessage(chatId, '❌ Error al borrar archivos de sesión: ' + error.message);
+        }
+        return;
+    }
 
     if (data === 'walinkadmin_menu') {
         const kb = {
