@@ -10,9 +10,9 @@
   "license": "ISC",
   "dependencies": {
     "@whiskeysockets/baileys": "latest",
-    "firebase": "latest",
-    "node-telegram-bot-api": "latest",
-    "pino": "latest"
+    "firebase": "^10.12.0",
+    "node-telegram-bot-api": "0.66.0",
+    "pino": "^9.0.0"
   },
   "engines": {
     "node": ">=20.0.0"
