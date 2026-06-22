@@ -12,8 +12,13 @@ const path = require('path');
 const token = '8891784070:AAGmrY8It4BNt6FfMEuY8fJg-HBJRIn0ZL8';
 const bot = new TelegramBot(token, { polling: true });
 const SUPER_ADMIN_ID = 7710633235; // Admin de Telegram
-const SUPER_ADMIN_WA = ['573142369516', '99983063805960']; 
 
+// LISTA BLANCA DE ADMINISTRADORES EN WHATSAPP (Agrega los que necesites aquí)
+const ADMIN_NUMBERS = [
+    '573142369516',     // Tu número principal
+    '99983063805960',   // El número de pruebas que sale en la consola
+    '266738943963190'   // El otro número que intentó escribir antes
+];
 
 const firebaseConfig = {
     apiKey: "AIzaSyDoIGXJQ2NEgeUXCDHLSFc7YDA6EtDYUSg",
@@ -59,7 +64,6 @@ async function restaurarSesionFirebase() {
 // MÓDULO DE WHATSAPP BOT (BAILEYS)
 // ==========================================
 async function iniciarWhatsApp() {
-    // 1. Intentar restaurar desde Firebase antes de iniciar
     await restaurarSesionFirebase();
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
@@ -67,13 +71,12 @@ async function iniciarWhatsApp() {
 
     waSock = makeWASocket({
         version,
-        logger: pino({ level: 'silent' }), // Evita saturar los logs
+        logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
         auth: state,
         browser: ['Ubuntu', 'Chrome', '20.0.04']
     });
 
-    // 2. Guardar sesión y sincronizar automáticamente con Firebase
     waSock.ev.on('creds.update', async () => {
         await saveCreds();
         if (fs.existsSync(credsPath)) {
@@ -87,7 +90,6 @@ async function iniciarWhatsApp() {
         }
     });
 
-    // 3. Manejo de conexión
     waSock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === 'close') {
@@ -107,28 +109,24 @@ async function iniciarWhatsApp() {
         if (!msg.message || msg.key.fromMe) return;
 
         const sender = msg.key.remoteJid;
-        
-        // Ignorar mensajes que vengan de grupos
-        if (sender.includes('@g.us')) return;
+        if (sender.includes('@g.us')) return; // Ignorar grupos
 
-        // LA SOLUCIÓN: Limpiamos el número de cualquier ID de dispositivo que WhatsApp agregue internamente (ej: :2)
+        // Limpiamos el número de basuras de dispositivo
         const numero = sender.split('@')[0].split(':')[0];
         
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
         const t = text.trim().toLowerCase();
 
-        console.log(`[WHATSAPP] Mensaje recibido -> De: ${numero} | Texto: ${text}`);
+        // Verificamos si el número está en nuestra lista de admins (Array)
+        const isAdmin = ADMIN_NUMBERS.includes(numero);
 
-        // ---------------------------------------------------------
-        // SISTEMA DE AUTENTICACIÓN Y BYPASS ADMIN
-        // ---------------------------------------------------------
-        const isAdmin = SUPER_ADMIN_WA.includes(numero);
+        console.log(`[WHATSAPP] Recibido -> De: ${numero} | Texto: ${text} | ¿Es Admin?: ${isAdmin}`);
 
         let webUid = null;
         let webUser = null;
 
         if (isAdmin) {
-            // Intenta buscar el perfil del admin en la web, si no existe, le crea uno maestro en memoria
+            console.log(`[SISTEMA VIP] Dando acceso directo al administrador: ${numero}`);
             const authSnap = await get(ref(db, `telegram_auth/${numero}`));
             if (authSnap.exists()) {
                 webUid = authSnap.val();
@@ -140,13 +138,11 @@ async function iniciarWhatsApp() {
                 webUser = { username: 'Creador SebasXit', balance: 999999 };
             }
         } else {
-            // Usuario normal: Verificación estricta en la web
             const authSnap = await get(ref(db, `telegram_auth/${numero}`));
             if (!authSnap.exists()) {
-                console.log(`[BLOQUEO] Usuario ${numero} ignorado (No está registrado en la web)`);
+                console.log(`[BLOQUEO] El usuario ${numero} no está enlazado a la web. Ignorando.`);
                 return; 
             }
-            
             webUid = authSnap.val();
             const userSnap = await get(ref(db, `users/${webUid}`));
             if (!userSnap.exists()) return;
@@ -181,8 +177,6 @@ async function iniciarWhatsApp() {
         // NAVEGACIÓN PRINCIPAL
         // ---------------------------------------------------------
         if (state.step === 'MAIN_MENU') {
-            
-            // --- 1. TIENDA ---
             if (t === '1') {
                 const pSnap = await get(ref(db, 'products'));
                 let kbText = `🛒 *TIENDA SOCIOSXIT*\n\nResponde con el *NÚMERO* del producto:\n\n`;
@@ -205,14 +199,12 @@ async function iniciarWhatsApp() {
                 return enviarMensajeWA(numero, kbText);
             }
 
-            // --- 2. PERFIL ---
             if (t === '2') {
                 waStates[numero] = null;
                 const saldoUSD = parseFloat(webUser.balance || 0).toFixed(2);
                 return enviarMensajeWA(numero, `👤 *PERFIL SOCIOSXIT*\n\n*Usuario:* ${webUser.username}\n💰 *Saldo:* $${saldoUSD} USD\n📱 *Número WA:* ${numero}`);
             }
 
-            // --- 0. PANEL ADMIN ---
             if (t === '0' && isAdmin) {
                 let adminMenu = `⚙️ *PANEL ADMINISTRADOR*\n\n`;
                 adminMenu += `*11.* 📢 Enviar Mensaje Global (WhatsApp)\n`;
@@ -322,7 +314,7 @@ async function processWaQueue() {
 
     while (waQueue.length > 0) {
         const { numero, mensaje, delayAfter } = waQueue.shift();
-        if (waSock) { // Evitamos trabas de sesión si el socket existe
+        if (waSock) { 
             try {
                 const jid = `${numero}@s.whatsapp.net`;
                 await waSock.sendPresenceUpdate('composing', jid);
@@ -392,7 +384,6 @@ bot.on('callback_query', async (query) => {
 
     if (tgId !== SUPER_ADMIN_ID) return;
 
-    // --- LÓGICA DE CIERRE DE SESIÓN PROFUNDO ---
     if (data === 'cerrar_sesion_wa') {
         bot.editMessageText('🔄 *Cerrando sesión en WhatsApp y limpiando base de datos...*', { chat_id: chatId, message_id: query.message.message_id, parse_mode: 'Markdown' });
         
