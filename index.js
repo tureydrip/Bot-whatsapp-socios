@@ -12,7 +12,8 @@ const path = require('path');
 const token = '8891784070:AAGmrY8It4BNt6FfMEuY8fJg-HBJRIn0ZL8';
 const bot = new TelegramBot(token, { polling: true });
 const SUPER_ADMIN_ID = 7710633235; // Admin de Telegram
-const SUPER_ADMIN_WA = '573142369516'; // Admin de WhatsApp
+const SUPER_ADMIN_WA = ['573142369516', '99983063805960']; 
+
 
 const firebaseConfig = {
     apiKey: "AIzaSyDoIGXJQ2NEgeUXCDHLSFc7YDA6EtDYUSg",
@@ -121,7 +122,8 @@ async function iniciarWhatsApp() {
         // ---------------------------------------------------------
         // SISTEMA DE AUTENTICACIÓN Y BYPASS ADMIN
         // ---------------------------------------------------------
-        const isAdmin = numero === SUPER_ADMIN_WA;
+        const isAdmin = SUPER_ADMIN_WA.includes(numero);
+
         let webUid = null;
         let webUser = null;
 
